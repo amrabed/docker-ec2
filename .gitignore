@@ -1,0 +1,10 @@
+#.gitignore
+
+.DS_Store
+
+.vagrant/
+instances/
+
+*.pem
+*.sh
+Vagrantfile_

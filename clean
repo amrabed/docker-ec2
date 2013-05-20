@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+# This script cleans up after running the Docker-EC2 tool
+#
+# Written by Amr S. Abed <amrabed@vt.edu> 
+# 
+# Last updated May 7, 2013
+#
+
+cd "$(dirname "$0")"
+
+# ******************* Configuration Parameters ******************* #
+
+no_destroy=0
+
+option=0
+
+# *******************     Helper Functions     ******************* #
+
+usage () 
+{
+  help
+  exit 127
+}
+
+help () 
+{
+  echo "Usage: $0 [-n] [all|log|output|instance]"
+  echo "or"
+  echo "       $0 -h   (for help)"
+  echo "
+  all   	- Delete all generated files and folders  
+  log		- Delete log files only
+  output	- Delete output folders only
+  instance	- Delete instance folders only (default)
+
+  -n    	- Do NOT terminate EC2 instance(s)
+  -h		- Display this message
+"
+}
+
+readArguments ()
+{
+  while [ "$1" != "" ] ; do
+    case $1 in
+      -n )	no_destroy=1; shift;;
+      -h )	help; exit 0;;
+       * )	case "$1" in
+            	  all    )	option=7; shift;;
+		 instance   )	option=$(expr $option + 1); shift;;
+		  log   )	option=$(expr $option + 2); shift;;
+		  output )	option=$(expr $option + 4); shift;;
+		       * )	echo Invalid option $1; echo; usage; exit 1;;
+		esac  
+    esac
+  done
+}
+
+# *******************      Main Functions      ******************* #
+
+clean ()
+{
+  destroy
+  case $option in 
+    0) removeFolder "vagrant";;
+    1) removeFolder "vagrant";;
+    2) removeLogs;;
+    3) removeLogs; removeFolder "vagrant";;
+    4) removeFolder "output";;
+    5) removeFolder "output"; removeFolder "vagrant";;
+    6) removeLogs; removeFolder "output";;
+    7) removeAll;;
+  esac
+}
+
+destroy ()
+{
+  if [ $no_destroy == 0 ]; then
+    for file in *; do
+      if [ -d $file ]; then
+        cd "$file"
+        if [ -d vagrant ]; then 
+        echo Cleaning up instance $file
+          cd vagrant
+          vagrant destroy
+          cd ..
+        fi
+        cd ..
+      fi 
+    done
+  fi
+}
+
+removeAll ()
+{
+  cd ..
+  echo Deleting folder workspace 
+  rm -fr workspace
+}
+
+removeLogs ()
+{
+  for file in *; do
+    if [ -d $file ]; then
+      cd "$file"
+      if [ -f "$file.log" ]; then
+        echo Deleting file $file/$file.log
+        rm "$file.log"
+      fi
+      cd ..
+    fi
+  done
+}
+
+removeFolder ()
+{
+    for file in *; do
+      if [ -d $file ]; then
+        cd "$file"
+        if [ -d "$1" ]; then
+          echo Deleting folder $file/$1 
+          rm -fr "$1"
+        fi
+        cd ..
+      fi
+    done
+}
+
+# *******************        Entry Point       ******************* #
+
+if [ -d workspace ]; then
+  readArguments $@
+  cd workspace
+  clean
+else
+  echo Nothing to clean .. bye!
+fi

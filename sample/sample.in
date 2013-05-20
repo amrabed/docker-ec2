@@ -1,0 +1,8 @@
+app.image = amrabed/application
+app.command = "/bin/bash /webserver/start"
+app.port = 8000
+app.instances = m1.small,m1.medium,m1.large,m1.xlarge,m2.xlarge,m2.2xlarge,m2.4xlarge,m3.xlarge,m3.2xlarge
+
+test.image = amrabed/test
+test.command = /load/test
+test.port = 22

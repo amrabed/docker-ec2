@@ -1,0 +1,18 @@
+set term post
+set output "docker-ec2.eps"
+set title "ab -n 1000 -c 100"
+set size 1,0.7
+set grid y
+set xlabel "Requests"
+set ylabel "Response Time"
+
+plot "./m1.small/output/data.tsv" using 9 smooth sbezier with lines title "m1.small", \
+ "./m1.medium/output/data.tsv" using 9 smooth sbezier with lines title "m1.medium", \
+ "./m1.large/output/data.tsv" using 9 smooth sbezier with lines title "m1.large", \
+ "./m1.xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m1.xlarge", \
+ "./m2.xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m2.xlarge", \
+ "./m2.2xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m2.2xlarge", \
+ "./m2.4xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m2.4xlarge", \
+ "./m3.xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m3.xlarge", \
+ "./m3.2xlarge/output/data.tsv" using 9 smooth sbezier with lines title "m3.2xlarge"
+

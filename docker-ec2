@@ -1,0 +1,275 @@
+#!/bin/bash
+#
+# The is the main script for the Docker-EC2 tool
+#
+# Written by Amr S. Abed <amrabed@vt.edu> 
+# 
+# Last updated May 20, 2013
+#
+
+cd "$(dirname "$0")"
+
+# ******************* Configuration Parameters ******************* #
+
+# Input file 
+input_file=""
+
+# EC2 Instance Types
+instance_types=""
+
+# Vagrant box name
+box_name="docker-ec2"
+
+# Flag to clean previous runs
+keep=0
+
+# Regular Expressions
+ip_regex='([0-9]{1,3}\.){3}[0-9]{1,3}'
+port_regex='[0-9]{1,5}'
+
+
+# *******************     Helper Functions     ******************* #
+
+usage () 
+{
+  help
+  exit 127
+}
+
+help () 
+{
+  echo
+  echo "Usage: $0 input_file [-k] [-i instance1[:instance2[:...]]]"
+  echo "or"
+  echo "       $0 -h   (for help)"
+  echo "
+  -i    - List of EC2 instance types (default: m1.small)
+  -k    - Keep instances from previous runs (default: false)
+  -h    - Print this message
+"
+}
+
+
+readArguments ()
+{
+  if [ $# -eq 0 ]; then usage; fi
+
+  while [ "$1" != "" ] ; do
+    case $1 in
+      -i | -I )	  instance_types=$2 ; shift 2;;
+      -k | -K )  keep=1; shift;;
+      -h | -H )	  help ; exit ;;
+            * )  input_file=$1; shift;; 
+    esac
+  done
+
+  if [ "$input_file" == "" ]; then 
+    echo Error: Missing input file name; echo; usage
+  else
+    readInputFile
+  fi
+
+  if [ "$instance_types" == "" ]; then 
+    echo No instance type provided .. Assuming default \'m1.small\'
+    instance_types="m1.small"
+  else
+    echo Running on EC2 instance types: $(echo $instance_types | tr ':' ',')
+  fi
+}
+
+readInputFile ()
+{
+  if [ ! -f $input_file ]; then
+    echo Error: Invalid input file "$input_file" .. Exiting; exit 1;
+  fi
+
+  echo Reading input file \'$input_file\'...
+  command="/vagrant/run"
+
+  app_port=$(grep 'app.port' $input_file | cut -d '=' -f2 | tr -d ' \t')
+  app_image=$(grep 'app.image' $input_file | cut -d '=' -f2 | tr -d ' \t')
+  app_command=$(grep 'app.command' $input_file | cut -d '=' -f2 )
+
+  if [ "$instance_types" == "" ]; then 
+    instance_types=$(grep 'app.instances' $input_file | cut -d '=' -f2 |  tr ',' ':' | tr -d ' \t'  )
+  fi
+  if [ "$app_image" == "" ]; then
+    echo Error: Docker image for application is not specified .. Exiting; exit 1
+  else 
+   echo Docker image for application: $app_image
+   command="$command -ii $app_image"
+  fi
+  if [ "$app_command" == "" ]; then
+    echo Error: Command to run the application is not specified .. Exiting; exit 1
+  else
+    echo Command to start the application: $app_command
+    command="$command -ic $app_command"
+  fi
+  if [ "$app_port" != "" ]; then
+    echo Application port: $app_port
+    command="$command -ip $app_port"
+  fi
+
+  test_port=$(grep 'test.port' $input_file | cut -d '=' -f2 | tr -d ' \t')
+  test_image=$(grep 'test.image' $input_file | cut -d '=' -f2 | tr -d ' \t')
+  test_command=$(grep 'test.command' $input_file | cut -d '=' -f2 )
+  test_output=$(grep 'test.output' $input_file | cut -d '=' -f2 )
+
+  if [ "$test_image" == "" ]; then
+    if [ "$test_command" != "" ]; then
+      echo Error: Command to test application specified, but no Docker image .. Exiting; exit 1
+    else
+      return;
+    fi
+  else
+    if [ "$test_command" == "" ]; then
+      echo Error: Docker image for load-test specified, but no command .. Exiting; exit 1
+    else
+      echo Docker image for load test: $test_image
+      echo Command to run load test: $test_command
+      command="$command -li $test_image -lc $test_command"
+    fi
+  fi
+  if [ "$test_port" != "" ]; then
+      echo Load test port: $test_port
+    command="$command -lp $test_port"
+  fi
+  echo -----------------------------------------
+
+}
+
+updateVagrantfile ()
+{
+  sed '/config.vm.provider :aws/ a\
+  \ \ \ \ aws.instance_type = "'$1'"
+  ' Vagrantfile > tmp
+  
+  mv tmp Vagrantfile
+}
+
+# *******************      Install Required Software      ******************* #
+
+installRequiredSoftware ()
+{
+  echo -----------------------------------------
+  # Install wget
+  if ! type wget > /dev/null; then
+    curl -O http://ftp.gnu.org/gnu/wget/wget-1.13.4.tar.gz
+    tar -xf wget*
+    cd wget*
+    ./configure --with-ssl=openssl
+    make
+    sudo make install
+    cd .. && rm -rf wget*
+  fi
+  # Install Virtualbox 
+  if ! type virtualbox > /dev/null; then
+    echo 'Downloading Virtualbox'
+    wget --no-check-certificate http://download.virtualbox.org/virtualbox/4.2.12/VirtualBox-4.2.12-84980-OSX.dmg
+    echo 'Installing VirtualBox'
+    hdiutil mount VirtualBox-4.2.12-84980-OSX.dmg
+    sudo installer -pkg "/Volumes/VirtualBox/VirtualBox.pkg" -target /
+    hdiutil unmount /Volumes/VirtualBox
+    rm VirtualBox-4.2.12-84980-OSX.dmg
+    echo -----------------------------------------
+  else
+    echo 'VirtualBox already installed'
+  fi
+
+  # Install Vagrant
+  if ! type vagrant > /dev/null; then
+    echo -----------------------------------------
+    echo 'Downloading Vagrant'
+    wget --no-check-certificate http://files.vagrantup.com/packages/a7853fe7b7f08dbedbc934eb9230d33be6bf746f/Vagrant-1.2.1.dmg
+    echo -----------------------------------------
+    echo 'Installing Vagrant'
+    hdiutil mount Vagrant-1.2.1.dmg
+    sudo installer -pkg "/Volumes/Vagrant/vagrant.pkg" -target /
+    hdiutil unmount /Volumes/Vagrant
+    rm Vagrant-1.2.1.dmg
+    echo -----------------------------------------
+  else
+    echo 'Vagrant already installed'
+  fi
+
+  # Install vagrant-aws plugin
+  plugins=$(vagrant plugin list)
+  if [[ $plugins == *"vagrant-aws"* ]]; then
+    echo "Plugin 'vagrant-aws' already installed"
+  else
+    echo -----------------------------------------
+    vagrant plugin install vagrant-aws
+  fi
+
+  # Install sshpass
+  if ! type sshpass > /dev/null; then
+    echo -----------------------------------------
+    echo 'Installing sshpass'
+    wget http://downloads.sourceforge.net/project/sshpass/sshpass/1.05/sshpass-1.05.tar.gz
+    tar xvf sshpass-1.05.tar.gz
+    cd sshpass-1.05
+    ./configure; sudo make; sudo make install
+    cd ..
+    rm -rf sshpass*
+  fi
+  echo -----------------------------------------
+}
+
+# *******************      Main Function      ******************* #
+
+run ()
+{
+
+  # Start an Amazon EC2 instance using Vagrant-AWS plugin
+  echo 'Connecting to an Amazon EC2 instance of type '"$1"
+  echo
+  cp -rf ../vagrant "$1"
+  #cp "$input_file" "$1/vagrant"
+  cd "$1/vagrant"
+  updateVagrantfile "$1"
+
+  boxes=$(vagrant box list)
+  if [[ ! $boxes == *$box_name* ]]; then
+    vagrant box add $box_name $box_name.box
+  fi
+
+  vagrant up --provider=aws
+  vagrant ssh -c "$command" 
+
+  cd ../..
+}
+
+# *******************        Entry Point       ******************* #
+
+  readArguments $@
+  installRequiredSoftware
+
+  if [ $keep == 0 ]; then
+    echo Cleaning traces from previous run
+    ./clean all
+    echo -----------------------------------------
+  fi
+  if [ ! -d workspace ]; then
+    mkdir workspace
+  fi
+  cd workspace
+
+  # Install & run on Amazon EC2 instance(s)
+  OIFS=$IFS;
+  IFS=:;
+  types=($instance_types);
+
+  for i in "${!types[@]}"; do 
+    instance="${types[i]}"
+    if [ ! -d "$instance" ]; then
+      mkdir "$instance"
+    fi 
+    run $instance | tee -i $instance/$instance.log 
+    ip=$(egrep -io "$ip_regex"  $instance/$instance.log | tail -1)
+    port=$(egrep -io "$port_regex"  $instance/$instance.log | tail -1)
+    echo Copying output files from EC2 instance into ./workspace/$instance/output/
+    sshpass -p 'magnum' scp -oStrictHostKeyChecking=no -P "$port" -r root@"$ip":/load/output/ $instance
+    echo -----------------------------------------
+  done
+
+  IFS=$OIFS;
