@@ -33,7 +33,7 @@ or
   -h    - Print this message
 </code></pre>
 
-<h3>Input File<h3>
+<h3>Input File</h3>
 <p><b>PLEASE NOTE THAT running Docker-EC2 using the sample input file may result in costs on your Amazon AWS account. Please read and modify the file as needed to match your preferences before running the script</b></p>
 <p>The input file 'sample.in' provides an example input file showing the format and the full list of supported specs for application and test</p>
 <p><code>app.image</code> (required): The Docker image for the application under test</p>
